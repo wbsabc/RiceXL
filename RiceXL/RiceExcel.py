@@ -1,11 +1,10 @@
 import os
-import re
 import xlrd
 import xlwt
 import tempfile
 from xlwt.Style import XFStyle
 from xlutils.copy import copy
-from openpyxl import Workbook, workbook
+from openpyxl import Workbook
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.utils import column_index_from_string
@@ -14,6 +13,12 @@ from RiceXL.RiceBorder import RiceBorder
 from RiceXL.RicePattern import RicePattern
 from RiceXL.RiceAlignment import RiceAlignment
 from RiceXL.xlutils_newcopy import new_copy
+from RiceXL.RiceUtils import get_pos_x_index
+from RiceXL.RiceUtils import get_pos_y_index
+from RiceXL.RiceUtils import get_right_pos
+from RiceXL.RiceUtils import get_down_pos
+from RiceXL.RiceUtils import get_corner_positions
+from RiceXL.RiceUtils import get_positions_in_area
 
 class RiceExcel(object):
     def __init__(self, file_path, writable=False):
@@ -114,11 +119,11 @@ class RiceExcel(object):
             return self.get_value_xlsx(position)
     
     def get_value_xls(self, position):
-        pos_x = self.get_pos_x_index(position)
-        pos_y = self.get_pos_y_index(position)
+        pos_x = get_pos_x_index(position)
+        pos_y = get_pos_y_index(position)
         pos_x -= 1
         pos_y = int(pos_y) - 1
-
+        
         if pos_y >= self.sheet.nrows or pos_x >= self.sheet.ncols:
             return None
         return self.sheet.cell(pos_y, pos_x).value
@@ -195,8 +200,8 @@ class RiceExcel(object):
     def set_value(self, position, value, style=None):
         self.check_writable()
         if self.excel_version == 'xls':
-            pos_y = self.get_pos_y_index(position) - 1
-            pos_x = self.get_pos_x_index(position) - 1
+            pos_x = get_pos_x_index(position) - 1
+            pos_y = get_pos_y_index(position) - 1
             if style is None:
                 style = self.get_origin_style_by_index(pos_y, pos_x)
                 self.sheet_write.write(pos_y, pos_x, value, style)
@@ -217,8 +222,8 @@ class RiceExcel(object):
         self.set_sheet_by_index(self.sheet_index)
     
     def get_origin_style_by_position(self, position):
-        pos_y = self.get_pos_y_index(position) - 1
-        pos_x = self.get_pos_x_index(position) - 1
+        pos_x = get_pos_x_index(position) - 1
+        pos_y = get_pos_y_index(position) - 1        
         return self.get_origin_style_by_index(pos_y, pos_x)
 
     def get_origin_style_by_index(self, pos_y, pos_x):
@@ -420,7 +425,7 @@ class RiceExcel(object):
         return hidden
     
     def merge_cells(self, pos_begin, pos_end):
-        begin_x_index, end_x_index, begin_y_index, end_y_index = self.get_corner_positions(pos_begin, pos_end)
+        begin_x_index, end_x_index, begin_y_index, end_y_index = get_corner_positions(pos_begin, pos_end)
         if self.excel_version == 'xls':
             pos_first = get_column_letter(begin_x_index) + str(begin_y_index)
             value = self.get_value_xls(pos_first)
@@ -435,7 +440,7 @@ class RiceExcel(object):
             self.sheet.merge_cells(start_row=begin_y_index, start_column=begin_x_index, end_row=end_y_index, end_column=end_x_index)
     
     def unmerge_cells(self, pos_begin, pos_end):
-        begin_x_index, end_x_index, begin_y_index, end_y_index = self.get_corner_positions(pos_begin, pos_end)
+        begin_x_index, end_x_index, begin_y_index, end_y_index = get_corner_positions(pos_begin, pos_end)
         if self.excel_version == 'xls':
             begin_x_index -= 1
             end_x_index -= 1
@@ -467,33 +472,6 @@ class RiceExcel(object):
     def check_writable(self):
         if not self.writable:
             raise Exception('The file is not writable!')
-
-    def get_pos_x(self, position):
-        return re.findall(r'\D+', position)[0] # Match letters
-    
-    # Start with 1
-    def get_pos_x_index(self, position):
-        return column_index_from_string(self.get_pos_x(position))
-    
-    # Start with 1
-    def get_pos_y(self, position):
-        return re.findall(r'\d+', position)[0] # Match numbers
-    
-    def get_pos_y_index(self, position):
-        return int(self.get_pos_y(position))
-    
-    def get_right_pos(self, position):
-        pos_x = self.get_pos_x_index(position)
-        pos_y = self.get_pos_y(position)
-
-        pos_x = get_column_letter(pos_x + 1)
-        return pos_x + pos_y
-    
-    def get_down_pos(self, position):
-        pos_x = self.get_pos_x(position)
-        pos_y = self.get_pos_y_index(position)
-
-        return pos_x + str(pos_y + 1)
     
     def sum(self, *positions):
         self.check_sheet_set()
@@ -504,54 +482,15 @@ class RiceExcel(object):
     
     def sum_in_area(self, pos_begin, pos_end):
         self.check_sheet_set()
-        pos_list = self.get_positions_in_area(pos_begin, pos_end)
+        pos_list = get_positions_in_area(pos_begin, pos_end)
         sum = 0
         for pos in pos_list:
             sum += float(self.get_value(pos))
         return sum
     
-    def get_corner_positions(self, pos_begin, pos_end):
-        pos_begin_x_index = self.get_pos_x_index(pos_begin)
-        pos_begin_y_index = self.get_pos_y_index(pos_begin)
-        pos_end_x_index = self.get_pos_x_index(pos_end)
-        pos_end_y_index = self.get_pos_y_index(pos_end)
-        if pos_begin_x_index <= pos_end_x_index:
-            begin_x_index = pos_begin_x_index
-            end_x_index = pos_end_x_index
-        else:
-            begin_x_index = pos_end_x_index
-            end_x_index = pos_begin_x_index
-        if pos_begin_y_index <= pos_end_y_index:
-            begin_y_index = pos_begin_y_index
-            end_y_index = pos_end_y_index
-        else:
-            begin_y_index = pos_end_y_index
-            end_y_index = pos_begin_y_index
-        return begin_x_index, end_x_index, begin_y_index, end_y_index
-
-    def get_positions_in_area(self, pos_begin, pos_end):
-        begin_x_index, end_x_index, begin_y_index, end_y_index = self.get_corner_positions(pos_begin, pos_end)
-        pos_list = []
-        for x in range(begin_x_index, end_x_index + 1):
-            for y in range(begin_y_index, end_y_index + 1):
-                pos = get_column_letter(x) + str(y)
-                pos_list.append(pos)
-        return pos_list
-    
-    def get_positions_matrix_in_area(self, pos_begin, pos_end):
-        begin_x_index, end_x_index, begin_y_index, end_y_index = self.get_corner_positions(pos_begin, pos_end)
-        pos_matrix = []
-        for x in range(begin_x_index, end_x_index + 1):
-            pos_list = []
-            for y in range(begin_y_index, end_y_index + 1):
-                pos = get_column_letter(x) + str(y)
-                pos_list.append(get_column_letter(x) + str(y))
-            pos_matrix.append(pos_list)
-        return pos_matrix
-    
     def get_values_matrix_in_area(self, pos_begin, pos_end):
         self.check_sheet_set()
-        begin_x_index, end_x_index, begin_y_index, end_y_index = self.get_corner_positions(pos_begin, pos_end)
+        begin_x_index, end_x_index, begin_y_index, end_y_index = get_corner_positions(pos_begin, pos_end)
         value_matrix = []
         for x in range(begin_x_index, end_x_index + 1):
             value_list = []
@@ -569,5 +508,5 @@ class RiceExcel(object):
             pos = pos_cursor
             for value in value_list:
                 self.set_value(pos, value)
-                pos = self.get_down_pos(pos)
-            pos_cursor = self.get_right_pos(pos_cursor)
+                pos = get_down_pos(pos)
+            pos_cursor = get_right_pos(pos_cursor)
