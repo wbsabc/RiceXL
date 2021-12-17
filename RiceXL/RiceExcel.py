@@ -21,11 +21,14 @@ from RiceXL.RiceUtils import get_corner_positions
 from RiceXL.RiceUtils import get_positions_in_area
 
 class RiceExcel(object):
-    def __init__(self, file_path, writable=False):
+    def __init__(self, file_path='Temp.xlsx', writable=False):
         self.excel_path = file_path
         self.writable = writable
+        self.sheet_index = None
+        self.sheet_name = None
         self.tempfd = None
         self.tempfilename = None
+
         if self.excel_path.lower().endswith('.xls'):
             self.excel_version = 'xls'
             if os.path.exists(self.excel_path):
@@ -37,7 +40,7 @@ class RiceExcel(object):
             elif writable:
                 self.workbook_write = xlwt.Workbook(encoding='utf-8')
             else:
-                raise Exception('File not found: {}'.format(self.excel_path))   
+                raise Exception('File not found: {}'.format(self.excel_path))
         elif self.excel_path.lower().endswith('.xlsx'):
             self.excel_version = 'xlsx'
             if os.path.exists(self.excel_path):
@@ -86,39 +89,67 @@ class RiceExcel(object):
     def get_sheet(self, writable=False, sheet_name=None, sheet_index=None):
         if sheet_name is not None and sheet_index is not None:
             raise Exception('Cannot set sheet_index & sheet_name at the same time!')
-        if sheet_name is not None:
-            if self.excel_version == 'xls':
-                if self.writable:
-                    return self.workbook_write.get_sheet(sheet_name)
-                else:
-                    return self.workbook.sheet_by_name(sheet_name)
-            elif self.excel_version == 'xlsx':
-                return self.workbook[sheet_name]
-        elif sheet_index is not None:
-            if self.excel_version == 'xls':
-                if self.writable:
-                    return self.workbook_write.get_sheet(sheet_index)
-                else:
-                    return self.workbook.sheet_by_index(sheet_index)
-            elif self.excel_version == 'xlsx':
-                return self.workbook.worksheets[sheet_index]
+        if writable:
+            self.check_writable()
+        if sheet_index is not None:
+            self.get_sheet_by_index(sheet_index, writable)
+        elif sheet_name is not None:
+            self.get_sheet_by_name(sheet_name, writable)
         else:
-            if self.excel_version == 'xls':
-                if writable:
-                    return self.sheet_write
-                else:
-                    return self.sheet
-            elif self.excel_version == 'xlsx':
+            self.get_current_sheet(writable)
+    
+    def get_sheet_by_index(self, sheet_index, writable=False):
+        if writable:
+            self.check_writable()
+        if self.excel_version == 'xls':
+            if writable:
+                return self.workbook_write.get_sheet(sheet_index)
+            else:
+                return self.workbook.sheet_by_index(sheet_index)
+        elif self.excel_version == 'xlsx':
+            return self.workbook.worksheets[sheet_index]
+    
+    def get_sheet_by_name(self, sheet_name, writable=False):
+        if writable:
+            self.check_writable()
+        if self.excel_version == 'xls':
+            if writable:
+                return self.workbook_write.get_sheet(sheet_name)
+            else:
+                return self.workbook.sheet_by_name(sheet_name)
+        elif self.excel_version == 'xlsx':
+            return self.workbook[sheet_name]
+    
+    def get_current_sheet(self, writable=False):
+        self.check_sheet_set()
+        if writable:
+            self.check_writable()
+        if self.excel_version == 'xls':
+            if writable:
+                return self.sheet_write
+            else:
                 return self.sheet
+        elif self.excel_version == 'xlsx':
+            return self.sheet
+    
+    def get_current_sheet_index(self):
+        self.check_sheet_set()
+        return self.sheet_index
+    
+    def get_current_sheet_name(self):
+        self.check_sheet_set()
+        return self.sheet_name
     
     def get_value(self, position, sheet_index=None, sheet_name=None):
         self.set_sheet_by_index_or_name(sheet_index, sheet_name)
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             return self.get_value_xls(position)
         elif self.excel_version == 'xlsx':
             return self.get_value_xlsx(position)
     
     def get_value_xls(self, position):
+        self.check_sheet_set()
         pos_x = get_pos_x_index(position)
         pos_y = get_pos_y_index(position)
         pos_x -= 1
@@ -129,13 +160,12 @@ class RiceExcel(object):
         return self.sheet.cell(pos_y, pos_x).value
 
     def get_value_xlsx(self, position):
+        self.check_sheet_set()
         return self.sheet[position].value
 
     def set_sheet_by_index_or_name(self, sheet_index, sheet_name):
         if sheet_index is not None and sheet_name is not None:
             raise Exception('Cannot set sheet_index & sheet_name at the same time!')
-        if sheet_index is None and sheet_name is None:
-            self.check_sheet_set()
         if sheet_index is not None:
             self.set_sheet_by_index(sheet_index)
         if sheet_name is not None:
@@ -198,6 +228,7 @@ class RiceExcel(object):
             self.workbook._active_sheet_index = self.get_sheet_index_by_name(sheet_name)
     
     def set_value(self, position, value, style=None):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             pos_x = get_pos_x_index(position) - 1
@@ -214,6 +245,7 @@ class RiceExcel(object):
             self.sheet[position].value = value
     
     def handle_temp_file(self):
+        self.check_writable()
         if self.tempfd is None:
             self.tempfd, self.tempfilename = tempfile.mkstemp(suffix='.xls', prefix='RiceXL')
         self.save(self.tempfilename, True)
@@ -227,6 +259,7 @@ class RiceExcel(object):
         return self.get_origin_style_by_index(pos_y, pos_x)
 
     def get_origin_style_by_index(self, pos_y, pos_x):
+        self.check_sheet_set()
         try:
             xf_index = self.sheet.cell_xf_index(pos_y, pos_x)
             style = self.style_list[xf_index]
@@ -235,6 +268,7 @@ class RiceExcel(object):
         return style
     
     def set_number_format(self, position, format='General'):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
@@ -245,6 +279,7 @@ class RiceExcel(object):
             self.sheet[position].number_format = format
     
     def get_number_format(self, position):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
             number_format = style.num_format_str
@@ -253,6 +288,7 @@ class RiceExcel(object):
         return number_format
     
     def set_font(self, position, rice_font):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
@@ -263,6 +299,7 @@ class RiceExcel(object):
             self.sheet[position].font = rice_font.font_xlsx
     
     def get_font(self, position):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
             rice_font = RiceFont().init_xls(style.font)
@@ -271,6 +308,7 @@ class RiceExcel(object):
         return rice_font
     
     def set_border(self, position, rice_border):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
@@ -281,6 +319,7 @@ class RiceExcel(object):
             self.sheet[position].border = rice_border.border_xlsx
     
     def get_border(self, position):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
             rice_border = RiceBorder().init_xls(style.borders)
@@ -289,6 +328,7 @@ class RiceExcel(object):
         return rice_border
     
     def set_alignment(self, position, rice_alignment):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
@@ -299,6 +339,7 @@ class RiceExcel(object):
             self.sheet[position].alignment = rice_alignment.alignment_xlsx
     
     def get_alignment(self, position):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
             rice_alignment = RiceAlignment().init_xls(style.alignment)
@@ -307,6 +348,7 @@ class RiceExcel(object):
         return rice_alignment
     
     def set_pattern(self, position, rice_pattern):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
@@ -317,6 +359,7 @@ class RiceExcel(object):
             self.sheet[position].fill = rice_pattern.pattern_xlsx
     
     def get_pattern(self, position):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             style = self.get_origin_style_by_position(position)
             rice_pattern = RicePattern().init_xls(style.pattern)
@@ -325,6 +368,7 @@ class RiceExcel(object):
         return rice_pattern
     
     def set_height(self, row, height):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             row -= 1
@@ -335,6 +379,7 @@ class RiceExcel(object):
             self.sheet.row_dimensions[row].height = height
     
     def get_height(self, row):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             row -= 1
             if row >= len(self.sheet.rowinfo_map):
@@ -349,6 +394,7 @@ class RiceExcel(object):
         return height
     
     def set_width(self, col, width):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             col_index = column_index_from_string(col) - 1
@@ -358,6 +404,7 @@ class RiceExcel(object):
             self.sheet.column_dimensions[col].width = width
     
     def get_width(self, col):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             col_index = column_index_from_string(col) - 1
             if self.sheet.colinfo_map.get(col_index) is not None:
@@ -369,6 +416,7 @@ class RiceExcel(object):
         return width
     
     def hide_row(self, row):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             self.set_height(row, 0)
@@ -376,6 +424,7 @@ class RiceExcel(object):
             self.sheet.row_dimensions[row].hidden = True
     
     def unhide_row(self, row):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             height = self.get_height(row)
@@ -386,6 +435,7 @@ class RiceExcel(object):
             self.sheet.row_dimensions[row].hidden = False
     
     def is_row_hidden(self, row):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             height = self.get_height(row)
             if height == 0:
@@ -397,6 +447,7 @@ class RiceExcel(object):
         return hidden
     
     def hide_col(self, col):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             self.set_width(col, 0)
@@ -404,6 +455,7 @@ class RiceExcel(object):
             self.sheet.column_dimensions[col].hidden = True
     
     def unhide_col(self, col):
+        self.check_sheet_set()
         self.check_writable()
         if self.excel_version == 'xls':
             width = self.get_width(col)
@@ -414,6 +466,7 @@ class RiceExcel(object):
             self.sheet.column_dimensions[col].hidden = False
     
     def is_col_hidden(self, col):
+        self.check_sheet_set()
         if self.excel_version == 'xls':
             width = self.get_width(col)
             if width == 0:
@@ -425,6 +478,8 @@ class RiceExcel(object):
         return hidden
     
     def merge_cells(self, pos_begin, pos_end):
+        self.check_sheet_set()
+        self.check_writable()
         begin_x_index, end_x_index, begin_y_index, end_y_index = get_corner_positions(pos_begin, pos_end)
         if self.excel_version == 'xls':
             pos_first = get_column_letter(begin_x_index) + str(begin_y_index)
@@ -440,6 +495,8 @@ class RiceExcel(object):
             self.sheet.merge_cells(start_row=begin_y_index, start_column=begin_x_index, end_row=end_y_index, end_column=end_x_index)
     
     def unmerge_cells(self, pos_begin, pos_end):
+        self.check_sheet_set()
+        self.check_writable()
         begin_x_index, end_x_index, begin_y_index, end_y_index = get_corner_positions(pos_begin, pos_end)
         if self.excel_version == 'xls':
             begin_x_index -= 1
@@ -473,7 +530,7 @@ class RiceExcel(object):
         if not self.writable:
             raise Exception('The file is not writable!')
     
-    def sum(self, *positions):
+    def sum_by_positions(self, *positions):
         self.check_sheet_set()
         sum = 0
         for pos in positions:
@@ -503,6 +560,7 @@ class RiceExcel(object):
     
     def set_value_by_area(self, pos_begin, value_matrix):
         self.check_sheet_set()
+        self.check_writable()
         pos_cursor = pos_begin
         for value_list in value_matrix:
             pos = pos_cursor

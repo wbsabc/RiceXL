@@ -101,3 +101,9 @@ def none_to_zero(value):
         return 0
     else:
         return value
+
+def empty_to_zero(value):
+    if value is None or str(value).rstrip() == '':
+        return 0
+    else:
+        return value
