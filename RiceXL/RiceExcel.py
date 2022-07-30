@@ -567,7 +567,10 @@ class RiceExcel(object):
         self.check_sheet_set()
         sum = 0
         for pos in positions:
-            sum += float(self.get_value(pos))
+            value = self.get_value(pos)
+            if value is None or str(value).strip() == '':
+                value = 0
+            sum += float(value)
         return sum
     
     def sum_in_area(self, pos_begin, pos_end):
@@ -575,7 +578,10 @@ class RiceExcel(object):
         pos_list = get_positions_in_area(pos_begin, pos_end)
         sum = 0
         for pos in pos_list:
-            sum += float(self.get_value(pos))
+            value = self.get_value(pos)
+            if value is None or str(value).strip() == '':
+                value = 0
+            sum += float(value)
         return sum
     
     def get_values_matrix_in_area(self, pos_begin, pos_end):
