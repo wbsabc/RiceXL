@@ -107,3 +107,9 @@ def empty_to_zero(value):
         return 0
     else:
         return value
+
+def get_column_index_from_letter(letter):
+    return column_index_from_string(letter)
+
+def get_column_letter_from_index(index):
+    return get_column_letter(index)

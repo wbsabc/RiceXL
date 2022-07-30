@@ -26,8 +26,9 @@ class RiceExcel(object):
         self.writable = writable
         self.sheet_index = None
         self.sheet_name = None
-        self.tempfd = None
-        self.tempfilename = None
+        self.temp_fd = None
+        self.temp_file_name = None
+        self.copied_values = None
 
         if self.excel_path.lower().endswith('.xls'):
             self.excel_version = 'xls'
@@ -52,6 +53,7 @@ class RiceExcel(object):
         else:
             raise Exception('Unsupported file format!')
     
+    # Set the sheet which you want to handle - by index
     def set_sheet_by_index(self, sheet_index):
         self.sheet_index = sheet_index
         self.sheet_name = self.get_sheet_name_by_index(self.sheet_index)
@@ -62,6 +64,7 @@ class RiceExcel(object):
         elif self.excel_version == 'xlsx':
             self.sheet = self.workbook.worksheets[self.sheet_index]
 
+    # Set the sheet which you want to handle - by name
     def set_sheet_by_name(self, sheet_name):
         self.sheet_name = sheet_name
         self.sheet_index = self.get_sheet_index_by_name(self.sheet_name)
@@ -71,6 +74,20 @@ class RiceExcel(object):
                 self.sheet_write = self.workbook_write.get_sheet(self.sheet_name)
         elif self.excel_version == 'xlsx':
             self.sheet = self.workbook[self.sheet_name]
+    
+    def get_sheet_count(self):
+        if self.excel_version == 'xls':
+            count = len(self.workbook._sheet_names)
+        elif self.excel_version == 'xlsx':
+            count = len(self.workbook.sheetnames)
+        return count
+
+    def get_sheet_names(self):
+        if self.excel_version == 'xls':
+            sheet_names = self.workbook._sheet_names
+        elif self.excel_version == 'xlsx':
+            sheet_names = self.workbook.sheetnames
+        return sheet_names
     
     def get_sheet_index_by_name(self, sheet_name):
         if self.excel_version == 'xls':
@@ -86,6 +103,19 @@ class RiceExcel(object):
             sheet_name = self.workbook.sheetnames[sheet_index]
         return sheet_name
     
+    def get_excel_version(self):
+        return self.excel_version
+    
+    # Return workbook object
+    def get_workbook(self, writable=False):
+        if writable:
+            self.check_writable()
+        if writable and self.excel_version == 'xls':
+            return self.workbook_write
+        else:
+            return self.workbook
+    
+    # Return sheet object
     def get_sheet(self, writable=False, sheet_name=None, sheet_index=None):
         if sheet_name is not None and sheet_index is not None:
             raise Exception('Cannot set sheet_index & sheet_name at the same time!')
@@ -98,6 +128,7 @@ class RiceExcel(object):
         else:
             self.get_current_sheet(writable)
     
+    # Return sheet object
     def get_sheet_by_index(self, sheet_index, writable=False):
         if writable:
             self.check_writable()
@@ -109,6 +140,7 @@ class RiceExcel(object):
         elif self.excel_version == 'xlsx':
             return self.workbook.worksheets[sheet_index]
     
+    # Return sheet object
     def get_sheet_by_name(self, sheet_name, writable=False):
         if writable:
             self.check_writable()
@@ -120,6 +152,7 @@ class RiceExcel(object):
         elif self.excel_version == 'xlsx':
             return self.workbook[sheet_name]
     
+    # Return sheet object
     def get_current_sheet(self, writable=False):
         self.check_sheet_set()
         if writable:
@@ -246,10 +279,10 @@ class RiceExcel(object):
     
     def handle_temp_file(self):
         self.check_writable()
-        if self.tempfd is None:
-            self.tempfd, self.tempfilename = tempfile.mkstemp(suffix='.xls', prefix='RiceXL')
-        self.save(self.tempfilename, True)
-        self.workbook = xlrd.open_workbook(self.tempfilename, formatting_info=True)
+        if self.temp_fd is None:
+            self.temp_fd, self.temp_file_name = tempfile.mkstemp(suffix='.xls', prefix='RiceXL')
+        self.save(self.temp_file_name, True)
+        self.workbook = xlrd.open_workbook(self.temp_file_name, formatting_info=True)
         temp_workbook_write, self.style_list = new_copy(self.workbook)
         self.set_sheet_by_index(self.sheet_index)
     
@@ -520,11 +553,11 @@ class RiceExcel(object):
             self.workbook.save(new_file_path)
 
     def clean_up(self):
-        if self.tempfd is not None:
-            os.close(self.tempfd)
-            os.unlink(self.tempfilename)
-            self.tempfd = None
-            self.tempfilename = None
+        if self.temp_fd is not None:
+            os.close(self.temp_fd)
+            os.unlink(self.temp_file_name)
+            self.temp_fd = None
+            self.temp_file_name = None
 
     def check_writable(self):
         if not self.writable:
@@ -568,3 +601,11 @@ class RiceExcel(object):
                 self.set_value(pos, value)
                 pos = get_down_pos(pos)
             pos_cursor = get_right_pos(pos_cursor)
+
+    def copy(self, pos_begin, pos_end):
+        self.copied_values = self.get_values_matrix_in_area(pos_begin, pos_end)
+    
+    def paste(self, pos_begin):
+        if self.copied_values is None:
+            raise Exception('Have not copy any value!')
+        self.set_value_by_area(pos_begin, self.copied_values)
